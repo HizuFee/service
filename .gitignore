@@ -31,6 +31,7 @@ temp/
 
 # WhatsApp Web auth/session (local login state)
 .wwebjs_auth/
+.wwebjs_cache/
 
 # Runtime session state
 sessions.json
