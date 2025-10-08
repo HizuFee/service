@@ -1,6 +1,11 @@
 [
-    { "keyword": "harga", "info": "Harga jasa desain mulai dari Rp150.000 tergantung kompleksitas." },
-    { "keyword": "waktu pengerjaan", "info": "Waktu pengerjaan rata-rata 2–3 hari kerja." },
-    { "keyword": "revisi", "info": "Kami menyediakan 2 kali revisi gratis untuk setiap proyek." }
-  ]
+  { "keyword": "layanan", "short": "Informasi layanan yang tersedia", "info": "Kami menyediakan layanan jasa editing video." },
+  { "keyword": "jam buka", "short": "Waktu operasional", "info": "Kami buka setiap hari pukul 08.00 - 15.00 WIB." },
+  { "keyword": "lokasi", "short": "Alamat kantor pusat", "info": "Kantor kami berlokasi di malang." },
+  { "keyword": "harga", "info": "Harga mulai dari Rp150.000, tergantung durasi, kompleksitas, dan kebutuhan efek." },
+  { "keyword": "waktu pengerjaan", "info": "Rata-rata 2–3 hari kerja per video. Proyek mendesak bisa didiskusikan." },
+  { "keyword": "cara memesan", "info": "Kirim brief, bahan video, dan referensi lewat chat ini. Kami akan konfirmasi harga dan timeline sebelum mulai." },
+  { "keyword": "revisi", "info": "Bisa. Kami menyediakan hingga 2 kali revisi gratis setelah draft pertama." },
+  { "keyword": "format file", "info": "Kami menerima MP4, MOV, atau raw footage dari kamera/HP. Kirim via Google Drive bila ukuran besar." }
+]
   
