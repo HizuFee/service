@@ -1,0 +1,42 @@
+# Node dependencies
+node_modules/
+
+# Environment/secrets
+.env
+.env.*
+.npmrc
+
+# Logs and diagnostics
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output
+dist/
+build/
+coverage/
+.nyc_output/
+
+# Editor/OS junk
+.DS_Store
+.idea/
+.vscode/
+.history/
+.cache/
+tmp/
+temp/
+
+# WhatsApp Web auth/session (local login state)
+.wwebjs_auth/
+
+# Runtime session state
+sessions.json
+
+# Puppeteer/Chromium cache (sometimes created by whatsapp-web.js)
+.local-chromium/
+chrome-data/
+
+
