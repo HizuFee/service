@@ -364,27 +364,64 @@ client.on("message", async msg => {
 
   // === Mode AI ===
   const context = findContext(body);
-  const faqAnswer = findFaqAnswer(body) || findContext(body);
+  const faqAnswer = findFaqAnswer(body);
   const memoryBlock = buildMemoryBlock(from);
-  const prompt = context
-    ? `Kamu adalah asisten layanan editing video. Jawab berdasarkan informasi berikut: ${context}. Pertanyaan: ${body}${memoryBlock}`
-    : `Kamu adalah asisten layanan editing video. Jawab singkat, ramah, dan profesional: ${body}${memoryBlock}`;
 
   try {
+    let responseText = "";
+
+    // 1️⃣ Jawaban dari FAQ langsung
     if (faqAnswer) {
       logger.info("📚 FAQ terjawab", { from });
-      appendMemory(from, "user", body);
-      appendMemory(from, "bot", faqAnswer);
-      await msg.reply(faqAnswer);
-      return;
+      responseText = faqAnswer;
+
+    // 2️⃣ Jawaban dari knowledge base (context ditemukan)
+    } else if (context) {
+      logger.info("📘 Knowledge match", { from });
+      const prompt = `
+Kamu adalah asisten layanan editing video profesional yang ramah dan efisien.
+Gunakan informasi berikut untuk menjawab pertanyaan user.
+
+📘 Informasi relevan:
+${context}
+
+💬 Pertanyaan user:
+"${body}"
+
+${memoryBlock}
+
+Berikan jawaban singkat, jelas, dan sopan. Bila pertanyaannya tidak relevan dengan topik ini, tanggapi secara netral tanpa mengarang.
+`;
+      const result = await model.generateContent(prompt);
+      responseText = result.response.text();
+
+    // 3️⃣ Tidak ada data — AI tetap jawab sopan & arahkan ke admin
+    } else {
+      logger.info("💭 Tidak ada data yang cocok, batasi jawaban AI", { from });
+      const prompt = `
+Kamu adalah asisten layanan editing video profesional yang sopan dan ramah.
+User bertanya: "${body}"
+
+Kamu tidak punya data spesifik tentang hal ini.
+Jawab secara singkat dan tetap relevan, jangan membuat asumsi atau informasi palsu.
+Jika pertanyaan memerlukan jawaban pasti, sarankan dengan sopan untuk menghubungi admin.
+
+Contoh gaya jawaban:
+• "Hmm, sepertinya saya belum punya info pastinya. Biar lebih akurat, bisa langsung tanya admin ya 😊"
+• "Untuk memastikan, sebaiknya kamu tanyakan ke admin kami agar dapat penjelasan lengkap."
+• "Saya bantu sebisanya, tapi kalau butuh detail lebih, admin kami siap bantu!"
+
+Gunakan gaya natural dan profesional. Jangan berulang kali menyarankan admin.
+`;
+      const result = await model.generateContent(prompt);
+      responseText = result.response.text();
     }
 
-    logger.info("🧠 Generate AI", { from, prompt });
-    const result = await model.generateContent(prompt);
-    const response = result.response.text();
+    // simpan memory & balas user
     appendMemory(from, "user", body);
-    appendMemory(from, "bot", response);
-    await msg.reply(response);
+    appendMemory(from, "bot", responseText);
+    await msg.reply(responseText);
+
   } catch (err) {
     logger.error("❌ Error AI", { error: err.message });
     await msg.reply("⚠️ Maaf, terjadi kesalahan saat memproses permintaanmu.");

@@ -52,10 +52,10 @@ sessions.json           # State per user (mode, greeted, memory)
 
 ### Alur Utama
 1) Greeting awal: saat user pertama kali chat, bot kirim tagline + daftar FAQ (dari `data/faq.json`).
-2) Pertanyaan:
-   - Jika cocok FAQ (exact/contains) → kirim jawaban (sekarang dijadikan knowledge juga).
-   - Jika cocok `knowledge.json` (keyword termasuk di pesan) → kirim info.
-   - Jika tidak ada kecocokan → prompt ke Gemini.
+2) Pertanyaan (tahapan jawaban):
+   1. Jika cocok FAQ → kirim jawaban cepat dari FAQ
+   2. Jika ada context di `knowledge.json` → panggil AI dengan prompt yang dibatasi oleh context tersebut (meminimalkan halusinasi)
+   3. Jika tidak ada data yang cocok → AI menjawab singkat dan sopan, serta dengan halus menyarankan untuk ketik: "aku mau chat dengan admin" bila butuh jawaban pasti
 3) Mode Admin:
    - `!ambil <nomor>`: ubah `sessions[<nomor>@c.us].mode = "human"` (admin ambil alih)
    - `!selesai <nomor>`: kembalikan `mode = "ai"`
