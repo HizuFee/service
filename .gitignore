@@ -35,6 +35,7 @@ temp/
 
 # Runtime session state
 sessions.json
+orders.json
 
 # Puppeteer/Chromium cache (sometimes created by whatsapp-web.js)
 .local-chromium/

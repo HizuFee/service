@@ -1,5 +1,5 @@
 import pkg from "whatsapp-web.js";
-const { Client, LocalAuth } = pkg;
+const { Client, LocalAuth, MessageMedia } = pkg;
 import qrcode from "qrcode-terminal";
 import fs from "fs";
 import path from "path";
@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import chalk from "chalk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import * as XLSX from "xlsx";
 
 dotenv.config();
 
@@ -145,6 +146,290 @@ try {
   }
 } catch {
   logger.warn("sessions.json tidak valid, reset data");
+}
+
+// =========================
+//  📋 Order Manager
+// =========================
+let orders = {};
+let orderCounter = 1;
+
+try {
+  if (fs.existsSync("orders.json")) {
+    const raw = fs.readFileSync("orders.json", "utf8");
+    const data = raw.trim() ? JSON.parse(raw) : {};
+    orders = data.orders || {};
+    orderCounter = data.counter || 1;
+  }
+} catch {
+  logger.warn("orders.json tidak valid, reset data");
+}
+
+function saveOrders() {
+  const data = { orders, counter: orderCounter };
+  fs.writeFileSync("orders.json", JSON.stringify(data, null, 2));
+  logger.info("Orders disimpan", { count: Object.keys(orders).length });
+}
+
+function generateOrderId() {
+  return `ORD-${String(orderCounter++).padStart(4, '0')}`;
+}
+
+function formatOrder(order) {
+  return `📋 *${order.id}*\n` +
+         `👤 Orderer: ${order.ordererName}\n` +
+         `💰 Price: Rp ${order.price.toLocaleString('id-ID')}\n` +
+         `📝 Details: ${order.details}\n` +
+         `🔧 Work: ${order.work}\n` +
+         `📊 Status: ${order.status}\n` +
+         `⏰ Time: ${new Date(order.time).toLocaleString('id-ID')}\n` +
+         `📅 Deadline: ${order.deadline ? new Date(order.deadline).toLocaleString('id-ID') : 'Tidak ditentukan'}`;
+}
+
+async function exportOrdersToExcel() {
+  const worksheetData = [
+    ['Order ID', 'Orderer Name', 'Price (Rp)', 'Details', 'Work Type', 'Status', 'Created Time', 'Deadline']
+  ];
+  
+  Object.values(orders).forEach(order => {
+    worksheetData.push([
+      order.id,
+      order.ordererName,
+      order.price,
+      order.details,
+      order.work,
+      order.status,
+      new Date(order.time).toLocaleString('id-ID'),
+      order.deadline ? new Date(order.deadline).toLocaleString('id-ID') : 'Tidak ditentukan'
+    ]);
+  });
+  
+  const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+  
+  // Set column widths for better readability
+  const columnWidths = [
+    { wch: 12 }, // Order ID
+    { wch: 20 }, // Orderer Name
+    { wch: 15 }, // Price
+    { wch: 40 }, // Details
+    { wch: 20 }, // Work Type
+    { wch: 15 }, // Status
+    { wch: 20 }, // Created Time
+    { wch: 20 }  // Deadline
+  ];
+  worksheet['!cols'] = columnWidths;
+  
+  // Add range for styling
+  const range = XLSX.utils.decode_range(worksheet['!ref']);
+  
+  // Style the header row (row 0)
+  for (let col = range.s.c; col <= range.e.c; col++) {
+    const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+    if (!worksheet[cellAddress]) continue;
+    
+    worksheet[cellAddress].s = {
+      font: { bold: true, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: "366092" } },
+      alignment: { horizontal: "center", vertical: "center" },
+      border: {
+        top: { style: "thin", color: { rgb: "000000" } },
+        bottom: { style: "thin", color: { rgb: "000000" } },
+        left: { style: "thin", color: { rgb: "000000" } },
+        right: { style: "thin", color: { rgb: "000000" } }
+      }
+    };
+  }
+  
+  // Style data rows with alternating colors
+  for (let row = 1; row <= range.e.r; row++) {
+    const isEvenRow = row % 2 === 0;
+    const backgroundColor = isEvenRow ? "F2F2F2" : "FFFFFF";
+    
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+      if (!worksheet[cellAddress]) continue;
+      
+      // Special styling for different columns
+      let cellStyle = {
+        fill: { fgColor: { rgb: backgroundColor } },
+        border: {
+          top: { style: "thin", color: { rgb: "CCCCCC" } },
+          bottom: { style: "thin", color: { rgb: "CCCCCC" } },
+          left: { style: "thin", color: { rgb: "CCCCCC" } },
+          right: { style: "thin", color: { rgb: "CCCCCC" } }
+        },
+        alignment: { vertical: "center" }
+      };
+      
+      // Price column - right aligned and formatted
+      if (col === 2) { // Price column
+        cellStyle.alignment.horizontal = "right";
+        cellStyle.numFmt = "#,##0";
+      }
+      // Status column - center aligned with color coding
+      else if (col === 5) { // Status column
+        cellStyle.alignment.horizontal = "center";
+        const status = worksheet[cellAddress].v;
+        if (status === "done") {
+          cellStyle.fill.fgColor = { rgb: "C6EFCE" }; // Light green
+          cellStyle.font = { color: { rgb: "006100" } };
+        } else if (status === "on progress") {
+          cellStyle.fill.fgColor = { rgb: "FFEB9C" }; // Light yellow
+          cellStyle.font = { color: { rgb: "9C5700" } };
+        } else if (status === "canceled") {
+          cellStyle.fill.fgColor = { rgb: "FFC7CE" }; // Light red
+          cellStyle.font = { color: { rgb: "9C0006" } };
+        } else if (status === "todo") {
+          cellStyle.fill.fgColor = { rgb: "E7E6E6" }; // Light gray
+          cellStyle.font = { color: { rgb: "000000" } };
+        }
+      }
+      // Details column - wrap text
+      else if (col === 3) { // Details column
+        cellStyle.alignment.wrapText = true;
+        cellStyle.alignment.horizontal = "left";
+      }
+      // Other columns - left aligned
+      else {
+        cellStyle.alignment.horizontal = "left";
+      }
+      
+      worksheet[cellAddress].s = cellStyle;
+    }
+  }
+  
+  // Add summary section
+  const summaryRow = range.e.r + 3;
+  const summaryData = [
+    ['SUMMARY', '', '', '', '', '', '', ''],
+    ['Total Orders:', Object.keys(orders).length, '', '', '', '', '', ''],
+    ['Total Revenue:', Object.values(orders).reduce((sum, order) => sum + order.price, 0), '', '', '', '', '', ''],
+    ['', '', '', '', '', '', '', ''],
+    ['Status Breakdown:', '', '', '', '', '', '', ''],
+    ['Todo:', Object.values(orders).filter(o => o.status === 'todo').length, '', '', '', '', '', ''],
+    ['On Progress:', Object.values(orders).filter(o => o.status === 'on progress').length, '', '', '', '', '', ''],
+    ['Done:', Object.values(orders).filter(o => o.status === 'done').length, '', '', '', '', '', ''],
+    ['Canceled:', Object.values(orders).filter(o => o.status === 'canceled').length, '', '', '', '', '', '']
+  ];
+  
+  // Add summary data
+  summaryData.forEach((row, index) => {
+    const rowNum = summaryRow + index;
+    row.forEach((cell, colIndex) => {
+      if (cell !== '') {
+        const cellAddress = XLSX.utils.encode_cell({ r: rowNum, c: colIndex });
+        worksheet[cellAddress] = { v: cell };
+        
+        // Style summary section
+        if (index === 0) { // Summary header
+          worksheet[cellAddress].s = {
+            font: { bold: true, color: { rgb: "FFFFFF" } },
+            fill: { fgColor: { rgb: "70AD47" } },
+            alignment: { horizontal: "center", vertical: "center" },
+            border: {
+              top: { style: "thin", color: { rgb: "000000" } },
+              bottom: { style: "thin", color: { rgb: "000000" } },
+              left: { style: "thin", color: { rgb: "000000" } },
+              right: { style: "thin", color: { rgb: "000000" } }
+            }
+          };
+        } else if (colIndex === 1 && (index === 2 || index === 3)) { // Revenue and count cells
+          worksheet[cellAddress].s = {
+            font: { bold: true },
+            fill: { fgColor: { rgb: "E2EFDA" } },
+            alignment: { horizontal: "right" },
+            numFmt: index === 2 ? "#,##0" : "0",
+            border: {
+              top: { style: "thin", color: { rgb: "CCCCCC" } },
+              bottom: { style: "thin", color: { rgb: "CCCCCC" } },
+              left: { style: "thin", color: { rgb: "CCCCCC" } },
+              right: { style: "thin", color: { rgb: "CCCCCC" } }
+            }
+          };
+        } else {
+          worksheet[cellAddress].s = {
+            fill: { fgColor: { rgb: "E2EFDA" } },
+            border: {
+              top: { style: "thin", color: { rgb: "CCCCCC" } },
+              bottom: { style: "thin", color: { rgb: "CCCCCC" } },
+              left: { style: "thin", color: { rgb: "CCCCCC" } },
+              right: { style: "thin", color: { rgb: "CCCCCC" } }
+            }
+          };
+        }
+      }
+    });
+  });
+  
+  // Update the worksheet range to include summary
+  const newRange = XLSX.utils.decode_range(worksheet['!ref']);
+  newRange.e.r = summaryRow + summaryData.length - 1;
+  worksheet['!ref'] = XLSX.utils.encode_range(newRange);
+  
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Orders');
+  
+  const filename = `orders_${new Date().toISOString().split('T')[0]}.xlsx`;
+  const filepath = path.join(__dirname, filename);
+  
+  // Use dynamic import for xlsx-style
+  const XLSXStyle = await import('xlsx-style');
+  XLSXStyle.default.writeFile(workbook, filepath);
+  
+  return { filename, filepath };
+}
+
+function parseOrderInput(input) {
+  // Parse input in format: nama|harga|detail|pekerjaan|deadline
+  // or multi-line format
+  const lines = input.split('\n').map(line => line.trim()).filter(line => line);
+  
+  if (lines.length === 1) {
+    // Single line format with | separator
+    const parts = lines[0].split('|').map(part => part.trim());
+    if (parts.length >= 4) {
+      return {
+        ordererName: parts[0],
+        price: parseInt(parts[1]),
+        details: parts[2],
+        work: parts[3],
+        deadline: parts[4] ? new Date(parts[4]).getTime() : null
+      };
+    }
+  } else if (lines.length >= 4) {
+    // Multi-line format
+    return {
+      ordererName: lines[0],
+      price: parseInt(lines[1]),
+      details: lines[2],
+      work: lines[3],
+      deadline: lines[4] ? new Date(lines[4]).getTime() : null
+    };
+  }
+  
+  return null;
+}
+
+function parseDateInput(dateStr) {
+  if (!dateStr) return null;
+  
+  // Try different date formats
+  const formats = [
+    /^\d{4}-\d{2}-\d{2}$/, // YYYY-MM-DD
+    /^\d{2}\/\d{2}\/\d{4}$/, // DD/MM/YYYY
+    /^\d{2}-\d{2}-\d{4}$/, // DD-MM-YYYY
+  ];
+  
+  for (const format of formats) {
+    if (format.test(dateStr)) {
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        return date.getTime();
+      }
+    }
+  }
+  
+  return null;
 }
 
 // =========================
@@ -314,11 +599,244 @@ client.on("message", async msg => {
     } else if (cmd === "!help") {
       await msg.reply(
         `🛠️ *Perintah Admin:*\n\n` +
+          `*Chat Management:*\n` +
           `• !ambil <nomor> — Ambil alih chat user\n` +
           `• !selesai <nomor> — Kembalikan ke mode AI\n` +
-          `• !list — Lihat daftar user dalam mode human\n` +
+          `• !list — Lihat daftar user dalam mode human\n\n` +
+          `*Order Management:*\n` +
+          `• !order add — Tambah order baru (lihat format)\n` +
+          `• !order view [id] — Lihat order (semua atau spesifik)\n` +
+          `• !order edit <id> <field> <value> — Edit order\n` +
+          `• !order delete <id> — Hapus order\n` +
+          `• !order export — Export ke Excel\n\n` +
           `• !help — Tampilkan bantuan`
       );
+    } else if (cmd === "!order") {
+      const [, subCmd, ...args] = body.split(" ");
+      
+      if (subCmd === "add") {
+        // Get the full input after "!order add"
+        const input = body.substring("!order add".length).trim();
+        
+        if (!input) {
+          await msg.reply(
+            `📋 *Format Tambah Order:*\n\n` +
+            `*Format 1 (Single Line dengan |):*\n` +
+            `!order add nama|harga|detail|pekerjaan|deadline\n\n` +
+            `*Format 2 (Multi-line):*\n` +
+            `!order add\n` +
+            `nama pelanggan\n` +
+            `harga\n` +
+            `detail lengkap dengan spasi\n` +
+            `jenis pekerjaan\n` +
+            `deadline (opsional)\n\n` +
+            `*Contoh Format 1:*\n` +
+            `!order add "John Doe"|500000|"Video editing untuk pernikahan dengan efek khusus"|"Video Editing"|2024-12-31\n\n` +
+            `*Contoh Format 2:*\n` +
+            `!order add\n` +
+            `John Doe\n` +
+            `500000\n` +
+            `Video editing untuk pernikahan dengan efek khusus dan transisi yang smooth\n` +
+            `Video Editing\n` +
+            `2024-12-31`
+          );
+          return;
+        }
+        
+        const parsed = parseOrderInput(input);
+        
+        if (!parsed) {
+          await msg.reply("❌ Format input tidak valid. Gunakan format yang benar.");
+          return;
+        }
+        
+        if (isNaN(parsed.price) || parsed.price <= 0) {
+          await msg.reply("❌ Harga harus berupa angka positif.");
+          return;
+        }
+        
+        const orderId = generateOrderId();
+        const order = {
+          id: orderId,
+          ordererName: parsed.ordererName,
+          price: parsed.price,
+          details: parsed.details,
+          work: parsed.work,
+          status: "todo",
+          time: Date.now(),
+          deadline: parsed.deadline
+        };
+        
+        orders[orderId] = order;
+        saveOrders();
+        
+        await msg.reply(`✅ Order berhasil ditambahkan!\n\n${formatOrder(order)}`);
+        
+      } else if (subCmd === "view") {
+        if (args.length === 0) {
+          // View all orders
+          const orderList = Object.values(orders);
+          if (orderList.length === 0) {
+            await msg.reply("📋 Belum ada order.");
+            return;
+          }
+          
+          let response = `📋 *Daftar Semua Order (${orderList.length}):*\n\n`;
+          orderList.forEach(order => {
+            response += `${formatOrder(order)}\n\n`;
+          });
+          
+          if (response.length > 4000) {
+            // Split long messages
+            const chunks = response.match(/.{1,4000}/g) || [];
+            for (const chunk of chunks) {
+              await msg.reply(chunk);
+            }
+          } else {
+            await msg.reply(response);
+          }
+          
+        } else {
+          // View specific order
+          const orderId = args[0];
+          const order = orders[orderId];
+          
+          if (!order) {
+            await msg.reply(`❌ Order dengan ID ${orderId} tidak ditemukan.`);
+            return;
+          }
+          
+          await msg.reply(formatOrder(order));
+        }
+        
+      } else if (subCmd === "edit" && args.length >= 3) {
+        const [orderId, field, ...valueParts] = args;
+        const value = valueParts.join(" ");
+        
+        const order = orders[orderId];
+        if (!order) {
+          await msg.reply(`❌ Order dengan ID ${orderId} tidak ditemukan.`);
+          return;
+        }
+        
+        const validFields = ['ordererName', 'price', 'details', 'work', 'status', 'deadline'];
+        if (!validFields.includes(field)) {
+          await msg.reply(`❌ Field yang valid: ${validFields.join(', ')}`);
+          return;
+        }
+        
+        if (field === 'price') {
+          const price = parseInt(value);
+          if (isNaN(price) || price <= 0) {
+            await msg.reply("❌ Harga harus berupa angka positif.");
+            return;
+          }
+          order[field] = price;
+        } else if (field === 'status') {
+          const validStatuses = ['todo', 'on progress', 'done', 'canceled'];
+          if (!validStatuses.includes(value.toLowerCase())) {
+            await msg.reply(`❌ Status yang valid: ${validStatuses.join(', ')}`);
+            return;
+          }
+          order[field] = value.toLowerCase();
+        } else if (field === 'deadline') {
+          const deadline = parseDateInput(value);
+          if (value && !deadline) {
+            await msg.reply("❌ Format deadline tidak valid. Gunakan format: YYYY-MM-DD, DD/MM/YYYY, atau DD-MM-YYYY");
+            return;
+          }
+          order[field] = deadline;
+        } else {
+          order[field] = value;
+        }
+        
+        saveOrders();
+        await msg.reply(`✅ Order ${orderId} berhasil diupdate!\n\n${formatOrder(order)}`);
+        
+      } else if (subCmd === "delete" && args.length === 1) {
+        const orderId = args[0];
+        
+        if (!orders[orderId]) {
+          await msg.reply(`❌ Order dengan ID ${orderId} tidak ditemukan.`);
+          return;
+        }
+        
+        delete orders[orderId];
+        saveOrders();
+        await msg.reply(`✅ Order ${orderId} berhasil dihapus.`);
+        
+      } else if (subCmd === "export") {
+        try {
+          const { filename, filepath } = await exportOrdersToExcel();
+          logger.info("Excel file generated", { filename, filepath });
+          
+          // Check if file exists
+          if (!fs.existsSync(filepath)) {
+            throw new Error("Excel file tidak ditemukan setelah dibuat");
+          }
+          
+          // Get file stats
+          const stats = fs.statSync(filepath);
+          logger.info("Excel file stats", { size: stats.size, filename });
+          
+          // Read the Excel file as buffer
+          const fileBuffer = fs.readFileSync(filepath);
+          
+          // Create media object with MS Excel MIME type
+          const media = new MessageMedia(
+            'application/vnd.ms-excel',
+            fileBuffer.toString('base64'),
+            filename
+          );
+          
+          logger.info("Sending Excel file with MS Excel MIME type...");
+          
+          try {
+            // Send the Excel file using client.sendMessage directly
+            await client.sendMessage(msg.from, media, { caption: `📊 Export Order - ${filename}` });
+            logger.info("Excel file sent successfully");
+          } catch (sendError) {
+            logger.error("Failed to send Excel file", { error: sendError.message });
+            // Fallback: Send file information
+            await msg.reply(
+              `📊 *Excel Export Berhasil!*\n\n` +
+              `✅ File Excel telah dibuat dengan styling profesional\n` +
+              `📋 File: *${filename}*\n` +
+              `📁 Lokasi: \`${filepath}\`\n` +
+              `📏 Ukuran: ${(stats.size / 1024).toFixed(2)} KB\n\n` +
+              `File dapat diakses langsung dari server.`
+            );
+          }
+          
+          // Clean up the file after 30 seconds
+          setTimeout(() => {
+            try {
+              fs.unlinkSync(filepath);
+              logger.info("Excel file cleaned up", { filename });
+            } catch (e) {
+              logger.warn("Gagal menghapus file export", { error: e.message });
+            }
+          }, 30000);
+          
+        } catch (error) {
+          logger.error("Error export Excel", { error: error.message, stack: error.stack });
+          await msg.reply(`❌ Gagal export ke Excel: ${error.message}`);
+        }
+        
+      } else {
+        await msg.reply(
+          `📋 *Perintah Order:*\n\n` +
+          `• !order add — Tambah order baru\n` +
+          `• !order view [id] — Lihat order\n` +
+          `• !order edit <id> <field> <value> — Edit order\n` +
+          `• !order delete <id> — Hapus order\n` +
+          `• !order export — Export ke Excel\n\n` +
+          `*Field yang bisa diedit:* ordererName, price, details, work, status, deadline\n` +
+          `*Status yang valid:* todo, on progress, done, canceled\n` +
+          `*Format deadline:* YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY\n\n` +
+          `Ketik *!order add* untuk melihat format input yang lengkap.`
+        );
+      }
     } else {
       await msg.reply("❓ Perintah tidak dikenal. Ketik *!help* untuk melihat daftar perintah.");
     }
