@@ -293,13 +293,15 @@ client.on("message", async msg => {
     const [cmd, target] = body.split(" ");
     if (cmd === "!ambil" && target) {
       const targetId = target.includes("@c.us") ? target : `${target}@c.us`;
-      sessions[targetId] = { mode: "human" };
+      ensureSession(targetId);
+      sessions[targetId].mode = "human";
       saveSessions();
       await msg.reply(`✅ Kamu sekarang meng-handle chat dari ${targetId}`);
       await client.sendMessage(targetId, "🔔 Admin sudah bergabung dalam percakapan ini.");
     } else if (cmd === "!selesai" && target) {
       const targetId = target.includes("@c.us") ? target : `${target}@c.us`;
-      sessions[targetId] = { mode: "ai" };
+      ensureSession(targetId);
+      sessions[targetId].mode = "ai";
       saveSessions();
       await msg.reply(`✅ Chat ${targetId} dikembalikan ke mode AI.`);
       await client.sendMessage(targetId, "🤖 Chat kembali ke mode otomatis (AI).");
@@ -349,7 +351,8 @@ client.on("message", async msg => {
 
   // === Minta admin ===
   if (/admin|cs|manusia/i.test(body)) {
-    sessions[from] = { mode: "human" };
+    ensureSession(from);
+    sessions[from].mode = "human";
     saveSessions();
     await msg.reply("🧑‍💼 Baik! Saya hubungkan kamu dengan admin kami...");
     await client.sendMessage(ADMIN_ID, `📩 *Customer ${from} ingin bicara dengan admin.*`);
