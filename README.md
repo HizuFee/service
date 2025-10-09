@@ -172,16 +172,6 @@ Sistem mendukung 2 format input untuk memudahkan input detail yang panjang:
 !order add nama|harga|detail|pekerjaan|deadline
 ```
 
-**Format 2 (Multi-line):**
-```
-!order add
-nama pelanggan
-harga
-detail lengkap dengan spasi
-jenis pekerjaan
-deadline (opsional)
-```
-
 **Contoh Format 1:**
 ```
 !order add "John Doe"|500000|"Video editing untuk pernikahan dengan efek khusus"|"Video Editing"|2024-12-31
